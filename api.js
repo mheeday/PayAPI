@@ -11,24 +11,29 @@ app.use(logger('dev'));
 
 const port = 3000;
 
-app.get('/split-payments/compute', (req, res) => {
+app.post('/split-payments/compute', (req, res) => {
     const in_json = req.body;
     response_out = {"ID": in_json.ID,
                 "Balance": in_json.Amount,
                 "SplitBreakdown": []
     }
 
-    flatProcessor(in_json, response_out);
-    percentProcessor(in_json, response_out);
-    ratioProcessor(in_json, response_out);
-    //async.waterfall
-    console.log(response_out);
-    //console.log(in_json.SplitInfo[0]);
-    res.send(`Hello World, from express, ${req.body.ID}`);
+    async.waterfall([
+        function(callback) {
+            callback(null, in_json, response_out);
+        },
+        flatProcessor,
+        percentProcessor,
+        ratioProcessor
+        ],
+        function (err, result) {
+            res.status(200).json(response_out)
+            
+        })
 });
 
 
-function flatProcessor(request, response_out) {
+function flatProcessor(request, response_out, callback) {
     let balance = response_out.Balance;
     for (let split of request.SplitInfo) {
         if (split["SplitType"] =='FLAT') {
@@ -39,9 +44,10 @@ function flatProcessor(request, response_out) {
         }
     }
     response_out.Balance=balance;
+    callback(null, request, response_out);
 }
 
-function percentProcessor(request, response_out) {
+function percentProcessor(request, response_out, callback) {
     let balance = response_out.Balance;
     for (let split of request.SplitInfo) {
         if (split["SplitType"] =='PERCENTAGE') {
@@ -53,10 +59,11 @@ function percentProcessor(request, response_out) {
         }
     }
     response_out.Balance=balance;
+    callback(null, request, response_out);
 }
 
 
-function ratioProcessor(request, response_out) {
+function ratioProcessor(request, response_out, callback) {
     let balance = response_out.Balance;
     let totalRatio = 0;
     for (let split of request.SplitInfo) {
@@ -74,7 +81,7 @@ function ratioProcessor(request, response_out) {
     if (totalRatio>0) { 
         response_out.Balance=0;
     }
-    
+    callback(null, request, response_out);
 } 
 
 
@@ -96,4 +103,8 @@ app.use(function(req, res, next) {
     res.render('error');
   }); */
 
-app.listen(port, () => console.log(`Hello world app listening on port ${port}!`))
+app.listen(port, () => console.log(`Hello world app listening on port ${port}!`));
+
+//rew.accepts
+//res.set
+//res.type
