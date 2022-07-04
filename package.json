@@ -1,8 +1,11 @@
 {
   "name": "lannisterpayapi",
   "version": "1.0.0",
+  "engines": {
+    "node": "16.15.0"
+  },
   "description": "",
-  "main": "index.js",
+  "main": "api.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "devstart": "nodemon api.js"
@@ -12,6 +15,7 @@
   "dependencies": {
     "async": "^3.2.4",
     "body-parser": "^1.20.0",
+    "compression": "^1.7.4",
     "express": "^4.18.1",
     "morgan": "^1.10.0"
   },

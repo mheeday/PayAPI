@@ -2,9 +2,11 @@ const express =  require('express');
 const async = require('async');
 const bodyParser = require('body-parser');
 var logger = require('morgan');
+var compression = require('compression');
 
 const app = express();
 
+app.use(compression());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json({
         type: function() {
@@ -15,7 +17,8 @@ app.use(bodyParser.json({
 
 app.use(logger('dev'));
 
-const port = 3000;
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
 
 const reducer = (accumulator, curr) => accumulator + curr;
 
@@ -151,9 +154,25 @@ function ratioProcessor(request, response_out, callback) {
 
 
 // catch 404 and forward to error handler
-app.use(function(req, res, next) {
+/* app.use(function(req, res, next) {
     return res.status(404);
-  });
+  }); */
   
 
 app.listen(port, () => console.log(`Hello world app listening on port ${port}!`));
+
+function normalizePort(val) {
+    var port = parseInt(val, 10);
+  
+    if (isNaN(port)) {
+      // named pipe
+      return val;
+    }
+  
+    if (port >= 0) {
+      // port number
+      return port;
+    }
+  
+    return false;
+  }
