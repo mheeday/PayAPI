@@ -25,52 +25,87 @@ const reducer = (accumulator, curr) => accumulator + curr;
 app.post('/split-payments/compute', (req, res) => {
     res.setHeader('Content-Type', 'application/json')
 
-    if (!Object.keys(req.body).length) {
-        return res.status(400).send("Empty Body");
-    }
+    async.parallel(
+        [
+            function (callback) {
+                if (!Object.keys(req.body).length) {
+                    callback("Empty Body");
+                }
+            },
 
-    else if (! (Object.keys(req.body).length == 5)) {
-        if (!req.body.ID) {
-            return res.status(406).send("ID missing");
-        }
-        else if (!req.body.Amount) {
-            return res.status(406).send("Amount missing");
-        }
-        else if (!req.body.Currency) {
-            return res.status(406).send("Currency missing");
-        }
-        else if (!req.body.CustomerEmail) {
-            return res.status(406).send("Customer Email missing");
-        }
-        else {
-            return res.status(411).send("SplitInfo  missing");
-        }
-    }
+            function (callback) {
+                if (!Object.keys(req.body).length) {
+                    callback("Empty Body");
+                }
+            },
 
-    else if (req.body.SplitInfo.length == 0 ||  req.body.SplitInfo.length > 20 ) {
-        return res.status(406).send("SplitInfo  is either empty or more than 20");
-    }
+            function (callback) {
+                if (!Object.keys(req.body).length) {
+                    callback("Empty Body");
+                }
+            },
 
-    else if (req.body.SplitInfo.length) {
-        const TYPEARRAY = ['FLAT', 'PERCENTAGE', 'RATIO'];
+            function (callback) {
+                if (! (Object.keys(req.body).length == 5)) {
+                    if (!req.body.ID) {
+                        callback("ID missing");
+                    }
+                    else if (!req.body.Amount) {
+                        callback("Amount missing");
+                    }
+                    else if (!req.body.Currency) {
+                        callback("Currency missing");
+                    }
+                    else if (!req.body.CustomerEmail) {
+                        callback("Customer Email missing");
+                    }
+                    else if (!req.body.SplitInfo) {
+                        callback("SplitInfo  missing");
+                    }
+                }
+            },
 
-        for (let ele of req.body.SplitInfo)
-        {   
-             if (!(TYPEARRAY.includes(ele['SplitType'])) || typeof ele["SplitValue"] != 'number') {
-                return res.status(406).send("SplitInfo objects has invalid splittype or splitvalue");
+            function (callback) {
+                if (req.body.SplitInfo.length == 0 ||  req.body.SplitInfo.length > 20 ) {
+                    callback("SplitInfo  is either empty or more than 20");
+                }
+            },
+
+            function (callback) {
+                if (req.body.SplitInfo.length) {
+                    const TYPEARRAY = ['FLAT', 'PERCENTAGE', 'RATIO'];
+            
+                    for (let ele of req.body.SplitInfo)
+                    {   
+                         if (!(TYPEARRAY.includes(ele['SplitType'])) || typeof ele["SplitValue"] != 'number') {
+                            callback("SplitInfo objects has invalid splittype or splitvalue");
+                        } 
+            
+                        else if (Object.keys(ele).length != 3) {
+                        callback("Length of splitInfo objects are invalid")
+                        };
+                    }
+                }
+            },
+
+            function (callback) {
+                if (typeof req.body.ID != 'number' || typeof req.body.Amount != 'number') {
+                    callback("ID or Amount isn't a nummber ");
+                }
             } 
+        ],
+            function(err, result) {
+                if (err) {
+                    return res.status(406).send(err)
+                }
+            }
+    )
 
-            if (Object.keys(ele).length != 3) {
-            return res.status(406).send("Length of splitInfo objects are invalid")
-            };
-        }
-    }
+    in_json = req.body;
+    in_json["percent_arr"] = []
+    in_json["ratio_arr"] = []
+    in_json['total_ratio'] = 0;
 
-    else if (typeof req.body.ID != 'number' || typeof req.body.Amount != 'number') {
-        return res.status(406).send("ID or Amount isn't a nummber ");
-    }
-
-    const in_json = req.body;
     response_out = {"ID": in_json.ID,
                 "Balance": in_json.Amount,
                 "SplitBreakdown": []
@@ -87,7 +122,7 @@ app.post('/split-payments/compute', (req, res) => {
         function (err) {
             // The split Amount value computed for each entity cannot be greater than the transaction Amount.
             // The split Amount value computed for each entity cannot be lesser than 0.0
-            if (err) {return res.status(400);}
+            if (err) {return res.status(400).send(err);}
             if (response_out.Balance < 0 || response_out.Balance < response_out.SplitBreakdown.reduce(reducer)) {
                 return res.status(400).send("Split info is wrong")
             }
@@ -97,17 +132,24 @@ app.post('/split-payments/compute', (req, res) => {
 });
 
 function flatProcessor(request, response_out, callback) {
-    let max_amt = request.Amount;
+    let error = false;
     let balance = response_out.Balance;
     for (let split of request.SplitInfo) {
         if (split["SplitType"] =='FLAT') {
             let add_amount = split.SplitValue;
-            if (add_amount > max_amt || add_amount < 0) {
-                callback(1);
+            if (add_amount < 0 || add_amount > balance || balance < 0) {
+                callback("Error")
             }
             let temp_obj = {"SplitEntityId": split.SplitEntityId, "Amount": add_amount};
             response_out.SplitBreakdown.push(temp_obj)
             balance -= add_amount;
+        }
+        else if (split["SplitType"] =='PERCENTAGE') {
+            request.percent_arr.push(split)
+        }
+        else {
+            request.total_ratio += split.SplitValue;
+            request.ratio_arr.push(split)
         }
     }
     response_out.Balance=balance;
@@ -116,10 +158,10 @@ function flatProcessor(request, response_out, callback) {
 
 function percentProcessor(request, response_out, callback) {
     let balance = response_out.Balance;
-    for (let split of request.SplitInfo) {
+    for (let split of request.percent_arr) {
         if (split["SplitType"] =='PERCENTAGE') {
             if (split.SplitValue > 100 || split.SplitValue < 1) {
-                callback(1);
+                callback("Error");
             }
             let add_amount = ((split.SplitValue/100) * balance);
             let temp_obj = {"SplitEntityId": split.SplitEntityId, "Amount": add_amount};
@@ -133,31 +175,19 @@ function percentProcessor(request, response_out, callback) {
 
 function ratioProcessor(request, response_out, callback) {
     let balance = response_out.Balance;
-    let totalRatio = 0;
-    for (let split of request.SplitInfo) {
+    for (let split of request.ratio_arr) {
         if (split["SplitType"] =='RATIO') {
-            totalRatio += split.SplitValue;
-        }
-    }
-    for (let split of request.SplitInfo) {
-        if (split["SplitType"] =='RATIO') {
-            let add_amount = ((split.SplitValue/totalRatio) * balance);
+            let add_amount = ((split.SplitValue/request.total_ratio) * balance);
             let temp_obj = {"SplitEntityId": split.SplitEntityId, "Amount": add_amount};
             response_out.SplitBreakdown.push(temp_obj)
         }
     }
-    if (totalRatio>0) { 
+    if (request.total_ratio>0) { 
         response_out.Balance=0;
     }
     callback(null, request, response_out);
 } 
 
-
-// catch 404 and forward to error handler
-/* app.use(function(req, res, next) {
-    return res.status(404);
-  }); */
-  
 
 app.listen(port, () => console.log(`Hello world app listening on port ${port}!`));
 
